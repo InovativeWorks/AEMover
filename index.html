@@ -4,12 +4,7 @@
     <meta charset="UTF-8">
     <title>AE Mover</title>
     <style>
-        /* ── Reset & Base ─────────────────────────────── */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
             --bg-primary: #1e1e1e;
@@ -37,7 +32,6 @@
             overflow-x: hidden;
         }
 
-        /* ── Panel Layout ─────────────────────────────── */
         .panel {
             display: flex;
             flex-direction: column;
@@ -45,287 +39,143 @@
             min-height: 500px;
         }
 
-        /* ── Header ───────────────────────────────────── */
+        /* ── Header ─────────────────────────── */
         .header {
             padding: 12px 14px 8px;
             border-bottom: 1px solid var(--divider);
         }
+        .header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.3px; }
+        .header .subtitle { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
 
-        .header h1 {
-            font-size: 15px;
-            font-weight: 600;
-            color: var(--text-primary);
-            letter-spacing: 0.3px;
-        }
-
-        .header .subtitle {
-            font-size: 10px;
-            color: var(--text-muted);
-            margin-top: 1px;
-        }
-
-        /* ── Section ──────────────────────────────────── */
+        /* ── Section ────────────────────────── */
         .section {
             padding: 10px 14px;
             border-bottom: 1px solid var(--divider);
         }
-
         .section-label {
-            font-size: 10px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 6px;
+            font-size: 10px; font-weight: 600; color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px;
         }
 
-        /* ── Dropdowns ────────────────────────────────── */
-        .version-row {
-            display: flex;
-            align-items: center;
-            margin-bottom: 6px;
-        }
-
-        .version-row:last-child {
-            margin-bottom: 0;
-        }
-
-        .version-row label {
-            width: 52px;
-            font-size: 11px;
-            color: var(--text-secondary);
-            flex-shrink: 0;
-        }
+        /* ── Dropdowns ──────────────────────── */
+        .version-row { display: flex; align-items: center; margin-bottom: 6px; }
+        .version-row:last-child { margin-bottom: 0; }
+        .version-row label { width: 52px; font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
 
         select {
-            flex: 1;
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 5px 8px;
-            font-size: 11px;
-            font-family: inherit;
-            cursor: pointer;
-            outline: none;
-            appearance: none;
-            -webkit-appearance: none;
+            flex: 1; background: var(--bg-tertiary); color: var(--text-primary);
+            border: 1px solid var(--border); border-radius: 4px;
+            padding: 5px 8px; font-size: 11px; font-family: inherit;
+            cursor: pointer; outline: none;
+            appearance: none; -webkit-appearance: none;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 8px center;
+            background-repeat: no-repeat; background-position: right 8px center;
             padding-right: 24px;
         }
-
-        select:hover {
-            border-color: var(--accent);
-        }
-
-        select:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 1px var(--accent);
-        }
+        select:hover { border-color: var(--accent); }
+        select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
         .btn-refresh {
-            background: none;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            color: var(--text-secondary);
-            font-size: 12px;
-            padding: 4px 8px;
-            margin-left: 6px;
-            cursor: pointer;
-            line-height: 1;
+            background: none; border: 1px solid var(--border); border-radius: 4px;
+            color: var(--text-secondary); font-size: 12px; padding: 4px 8px;
+            margin-left: 6px; cursor: pointer; line-height: 1;
         }
-
-        .btn-refresh:hover {
-            background: var(--bg-hover);
-            color: var(--text-primary);
-        }
+        .btn-refresh:hover { background: var(--bg-hover); color: var(--text-primary); }
 
         #selection-warning {
-            display: none;
-            color: var(--warning);
-            font-size: 10px;
-            margin-top: 4px;
-            padding-left: 52px;
+            display: none; color: var(--warning); font-size: 10px;
+            margin-top: 4px; padding-left: 52px;
         }
 
-        /* ── Scan Results ─────────────────────────────── */
-        #scan-results {
-            display: none;
-        }
+        /* ── Scan Results ───────────────────── */
+        #scan-results { display: none; }
 
-        .item-row {
-            display: flex;
-            align-items: flex-start;
-            padding: 4px 0;
-        }
-
-        .item-row input[type="checkbox"] {
-            margin-right: 8px;
-            margin-top: 2px;
-            accent-color: var(--accent);
-        }
-
-        .item-info {
-            flex: 1;
-        }
-
-        .item-name {
-            font-size: 11px;
-            color: var(--text-primary);
-        }
-
-        .item-count {
-            font-size: 11px;
-            color: var(--accent);
-            margin-left: auto;
-            padding-left: 8px;
-            white-space: nowrap;
-        }
-
-        .item-sub {
-            font-size: 10px;
-            color: var(--text-muted);
-            padding-left: 22px;
-        }
-
-        .total-line {
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-top: 8px;
+        .category-group-label {
+            font-size: 9px; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 1px;
+            margin-top: 8px; margin-bottom: 2px;
             padding-top: 6px;
             border-top: 1px solid var(--divider);
         }
+        .category-group-label:first-child { margin-top: 0; padding-top: 0; border-top: none; }
 
-        /* ── Migrate Button ───────────────────────────── */
+        .item-row { display: flex; align-items: flex-start; padding: 3px 0; }
+        .item-row input[type="checkbox"] { margin-right: 8px; margin-top: 2px; accent-color: var(--accent); }
+        .item-info { flex: 1; min-width: 0; }
+        .item-name { font-size: 11px; color: var(--text-primary); }
+        .item-count {
+            font-size: 11px; color: var(--accent); margin-left: auto;
+            padding-left: 8px; white-space: nowrap;
+        }
+        .item-detail {
+            font-size: 9px; color: var(--text-muted); padding-left: 22px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            max-width: 230px;
+        }
+        .item-badge {
+            font-size: 8px; padding: 1px 4px; border-radius: 3px;
+            margin-left: 4px; vertical-align: middle;
+        }
+        .badge-report { background: #3a3520; color: var(--warning); }
+        .badge-auto { background: #1e3320; color: var(--success); }
+
+        .btn-open-folders {
+            display: none;
+            background: none; border: 1px solid var(--border); border-radius: 3px;
+            color: var(--text-secondary); font-size: 9px; padding: 1px 6px;
+            margin-left: 6px; cursor: pointer; white-space: nowrap;
+        }
+        .btn-open-folders:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+        .total-line {
+            font-size: 11px; color: var(--text-secondary);
+            margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--divider);
+        }
+
+        /* ── Migrate Button ─────────────────── */
         .migrate-section {
-            padding: 10px 14px;
-            border-bottom: 1px solid var(--divider);
-            text-align: center;
+            padding: 10px 14px; border-bottom: 1px solid var(--divider); text-align: center;
         }
-
         .btn-migrate {
-            background: var(--accent);
-            color: #ffffff;
-            border: none;
-            border-radius: 5px;
-            padding: 8px 32px;
-            font-size: 13px;
-            font-weight: 600;
-            font-family: inherit;
-            cursor: pointer;
-            letter-spacing: 0.3px;
-            transition: background 0.15s;
+            background: var(--accent); color: #fff; border: none; border-radius: 5px;
+            padding: 8px 32px; font-size: 13px; font-weight: 600; font-family: inherit;
+            cursor: pointer; letter-spacing: 0.3px; transition: background 0.15s;
         }
+        .btn-migrate:hover:not(:disabled) { background: var(--accent-hover); }
+        .btn-migrate:disabled { opacity: 0.35; cursor: not-allowed; }
 
-        .btn-migrate:hover:not(:disabled) {
-            background: var(--accent-hover);
-        }
-
-        .btn-migrate:disabled {
-            opacity: 0.35;
-            cursor: not-allowed;
-        }
-
-        /* ── Log ──────────────────────────────────────── */
+        /* ── Log ────────────────────────────── */
         .log-section {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-height: 0;
-            padding: 8px 14px;
-            border-bottom: 1px solid var(--divider);
+            flex: 1; display: flex; flex-direction: column; min-height: 0;
+            padding: 8px 14px; border-bottom: 1px solid var(--divider);
         }
-
-        .log-section .section-label {
-            flex-shrink: 0;
-        }
-
+        .log-section .section-label { flex-shrink: 0; }
         #log-content {
-            flex: 1;
-            overflow-y: auto;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 8px;
+            flex: 1; overflow-y: auto; background: var(--bg-secondary);
+            border: 1px solid var(--border); border-radius: 4px; padding: 8px;
             font-family: "Consolas", "SF Mono", monospace;
-            font-size: 10px;
-            line-height: 1.6;
-            min-height: 80px;
+            font-size: 10px; line-height: 1.6; min-height: 80px;
         }
-
-        .log-line {
-            word-break: break-word;
-        }
-
+        .log-line { word-break: break-word; }
         .log-success { color: var(--success); }
         .log-warning { color: var(--warning); }
         .log-error { color: var(--error); }
         .log-info { color: var(--text-secondary); }
+        .log-placeholder { color: var(--text-muted); font-style: italic; }
 
-        .log-placeholder {
-            color: var(--text-muted);
-            font-style: italic;
-        }
+        /* ── Footer ─────────────────────────── */
+        .footer { padding: 8px 14px; text-align: center; flex-shrink: 0; }
+        .footer-divider { border: none; border-top: 1px solid var(--divider); margin-bottom: 8px; }
+        .footer-heart { color: var(--error); font-size: 10px; }
+        .footer-text { font-size: 10px; color: var(--text-muted); line-height: 1.6; }
+        .footer-products { font-size: 10px; color: var(--text-secondary); }
+        .footer-link { color: var(--accent); text-decoration: none; }
+        .footer-link:hover { text-decoration: underline; }
 
-        /* ── Footer ───────────────────────────────────── */
-        .footer {
-            padding: 8px 14px;
-            text-align: center;
-            flex-shrink: 0;
-        }
-
-        .footer-divider {
-            border: none;
-            border-top: 1px solid var(--divider);
-            margin-bottom: 8px;
-        }
-
-        .footer-heart {
-            color: var(--error);
-            font-size: 10px;
-        }
-
-        .footer-text {
-            font-size: 10px;
-            color: var(--text-muted);
-            line-height: 1.6;
-        }
-
-        .footer-products {
-            font-size: 10px;
-            color: var(--text-secondary);
-        }
-
-        .footer-products a,
-        .footer-link {
-            color: var(--accent);
-            text-decoration: none;
-        }
-
-        .footer-products a:hover,
-        .footer-link:hover {
-            text-decoration: underline;
-        }
-
-        /* ── Scrollbar ────────────────────────────────── */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: var(--bg-secondary);
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 3px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--text-muted);
-        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
     </style>
 </head>
 <body>
@@ -340,16 +190,12 @@
         <div class="section">
             <div class="version-row">
                 <label>Source:</label>
-                <select id="source-select">
-                    <option value="">-- Select Source --</option>
-                </select>
-                <button id="btn-refresh" class="btn-refresh" title="Refresh version list">&#x21BB;</button>
+                <select id="source-select"><option value="">-- Select Source --</option></select>
+                <button id="btn-refresh" class="btn-refresh" title="Refresh">&#x21BB;</button>
             </div>
             <div class="version-row">
                 <label>Target:</label>
-                <select id="target-select">
-                    <option value="">-- Select Target --</option>
-                </select>
+                <select id="target-select"><option value="">-- Select Target --</option></select>
             </div>
             <div id="selection-warning"></div>
         </div>
@@ -358,29 +204,58 @@
         <div class="section" id="scan-results">
             <div class="section-label">Items found in source:</div>
 
+            <!-- Program Files (report only) -->
+            <div class="category-group-label">Program Files <span class="item-badge badge-report">report</span></div>
+
+            <div class="item-row" id="row-plugins">
+                <input type="checkbox" id="chk-plugins" checked>
+                <div class="item-info">
+                    <span class="item-name">Plug-ins (3rd party)</span>
+                    <div class="item-detail" id="detail-plugins"></div>
+                </div>
+                <span class="item-count" id="count-plugins">0 files</span>
+                <button class="btn-open-folders" onclick="openBothFolders('plugins')" title="Open source &amp; target folders">Open</button>
+            </div>
+
+            <div class="item-row" id="row-scripts">
+                <input type="checkbox" id="chk-scripts" checked>
+                <div class="item-info">
+                    <span class="item-name">ScriptUI Panels</span>
+                    <div class="item-detail" id="detail-scripts"></div>
+                </div>
+                <span class="item-count" id="count-scripts">0 files</span>
+                <button class="btn-open-folders" onclick="openBothFolders('scripts')" title="Open source &amp; target folders">Open</button>
+            </div>
+
             <div class="item-row" id="row-presets">
                 <input type="checkbox" id="chk-presets" checked>
                 <div class="item-info">
-                    <span class="item-name">Animation Presets</span>
-                    <div class="item-sub" id="presets-subfolders"></div>
+                    <span class="item-name">Presets (non-default)</span>
+                    <div class="item-detail" id="detail-presets"></div>
                 </div>
-                <span class="item-count" id="presets-count">0 files</span>
+                <span class="item-count" id="count-presets">0 files</span>
+                <button class="btn-open-folders" onclick="openBothFolders('presets')" title="Open source &amp; target folders">Open</button>
             </div>
 
-            <div class="item-row" id="row-outputmodules">
-                <input type="checkbox" id="chk-outputmodules" checked>
+            <!-- Documents (auto-copy) -->
+            <div class="category-group-label">Documents <span class="item-badge badge-auto">auto-copy</span></div>
+
+            <div class="item-row" id="row-userPresets">
+                <input type="checkbox" id="chk-userPresets" checked>
                 <div class="item-info">
-                    <span class="item-name">Output Module Templates</span>
+                    <span class="item-name">User Presets</span>
+                    <div class="item-detail" id="detail-userPresets"></div>
                 </div>
-                <span class="item-count" id="om-count">0 files</span>
+                <span class="item-count" id="count-userPresets">0 files</span>
             </div>
 
-            <div class="item-row" id="row-rendersettings">
-                <input type="checkbox" id="chk-rendersettings" checked>
+            <div class="item-row" id="row-templates">
+                <input type="checkbox" id="chk-templates" checked>
                 <div class="item-info">
-                    <span class="item-name">Render Settings</span>
+                    <span class="item-name">Templates</span>
+                    <div class="item-detail" id="detail-templates"></div>
                 </div>
-                <span class="item-count" id="rs-count">0 files</span>
+                <span class="item-count" id="count-templates">0 files</span>
             </div>
 
             <div class="total-line" id="total-files">Total: 0 files</div>
@@ -395,7 +270,7 @@
         <div class="log-section">
             <div class="section-label">Log:</div>
             <div id="log-content">
-                <div class="log-placeholder">Ready. Select source and target versions above.</div>
+                <div class="log-placeholder">Select source and target versions above.</div>
             </div>
         </div>
 
@@ -414,7 +289,6 @@
         </div>
     </div>
 
-    <!-- Scripts -->
     <script src="CSInterface.js"></script>
     <script src="js/libs/CSInterface.js"></script>
     <script src="js/main.js"></script>

@@ -1,7 +1,12 @@
 /**
  * AE Mover — Main Application Logic
- * Migrates user presets, Output Module templates, and Render Settings
- * between After Effects versions.
+ *
+ * Program Files items (Plug-ins, Scripts, Presets):
+ *   → Detect & report only. "Open Folders" button for manual copy.
+ *   → CEP cannot write to Program Files (requires Admin).
+ *
+ * Documents items (User Presets, Templates):
+ *   → Auto-copy with backup & skip-duplicates safety.
  *
  * Runs in CEP Node.js environment.
  */
@@ -12,6 +17,7 @@
     const fs = require('fs');
     const path = require('path');
     const os = require('os');
+    const { exec } = require('child_process');
 
     const csInterface = new CSInterface();
 
@@ -22,130 +28,142 @@
     let scanResult = null;
     let isMigrating = false;
 
+    // ── Constants ──────────────────────────────────────────
+
+    // Default Adobe plugin folders — ship with AE, do NOT report
+    const DEFAULT_PLUGIN_FOLDERS = new Set([
+        '(adobepsl)', 'cineware by maxon', 'effects', 'extensions', 'format', 'keyframe'
+    ]);
+
+    // Default preset folders that ship with AE
+    const DEFAULT_PRESET_FOLDERS = new Set([
+        'adobe express', 'backgrounds', 'behaviors', 'image - creative',
+        'image - special effects', 'image - utilities', 'legacy', 'shapes',
+        'sound effects', 'synthetics', 'text', 'transitions - dissolves',
+        'transitions - movement', 'transitions - wipes'
+    ]);
+
+    // Default scripts that ship with AE
+    const DEFAULT_SCRIPTS = new Set([
+        'about the scriptui panels folder.txt',
+        'create nulls from paths.jsx',
+        'vr comp editor.jsx'
+    ]);
+
     // ── Path Helpers ───────────────────────────────────────
 
-    function getDocumentsDir() {
+    function getProgramFilesDir() {
         if (os.platform() === 'win32') {
-            // Windows: typically C:\Users\<name>\Documents
-            return path.join(os.homedir(), 'Documents');
+            return process.env['ProgramFiles'] || 'C:\\Program Files';
         } else {
-            // macOS
-            return path.join(os.homedir(), 'Documents');
+            return '/Applications';
         }
     }
 
-    function getAEBaseDir() {
-        return path.join(getDocumentsDir(), 'Adobe');
+    function getDocumentsDir() {
+        return path.join(os.homedir(), 'Documents');
     }
 
-    /**
-     * Build paths for a given AE version year.
-     * Returns { presetsDir, templatesDir, label }
-     */
-    function getVersionPaths(versionYear) {
-        const baseDir = getAEBaseDir();
-        // AE folder names: "After Effects CC 20XX" or "After Effects 20XX"
-        // We store the actual detected folder name
-        const folderName = versionYear.folderName;
-        const aeDir = path.join(baseDir, folderName);
+    function getVersionPaths(version) {
+        const sf = version.supportFilesDir;
+        const dd = version.docsDir;
         return {
-            presetsDir: path.join(aeDir, 'User Presets'),
-            templatesDir: path.join(aeDir, 'Templates'),
-            baseDir: aeDir
+            pluginsDir: sf ? path.join(sf, 'Plug-ins') : null,
+            scriptsDir: sf ? path.join(sf, 'Scripts', 'ScriptUI Panels') : null,
+            presetsDir: sf ? path.join(sf, 'Presets') : null,
+            userPresetsDir: dd ? path.join(dd, 'User Presets') : null,
+            templatesDir: dd ? path.join(dd, 'Templates') : null,
         };
+    }
+
+    function openFolder(folderPath) {
+        if (!folderPath || !fs.existsSync(folderPath)) return;
+        if (os.platform() === 'win32') {
+            exec('explorer "' + folderPath.replace(/\//g, '\\') + '"');
+        } else {
+            exec('open "' + folderPath + '"');
+        }
     }
 
     // ── Version Detection ──────────────────────────────────
 
     function detectVersions() {
-        const baseDir = getAEBaseDir();
         const versions = [];
-
-        if (!fs.existsSync(baseDir)) {
-            return versions;
-        }
+        const adobeDir = path.join(getProgramFilesDir(), 'Adobe');
+        if (!fs.existsSync(adobeDir)) return versions;
 
         let entries;
-        try {
-            entries = fs.readdirSync(baseDir);
-        } catch (e) {
-            log('Error reading Adobe directory: ' + e.message, 'error');
-            return versions;
-        }
+        try { entries = fs.readdirSync(adobeDir); } catch (e) { return versions; }
 
-        // Match "After Effects CC 20XX" or "After Effects 20XX"
-        const aePattern = /^After Effects(?:\s+CC)?\s+(20\d{2})$/i;
+        const aePattern = /^Adobe After Effects(?:\s+CC)?\s+(20\d{2})$/i;
 
         entries.forEach(function (entry) {
             const match = entry.match(aePattern);
             if (!match) return;
 
-            const fullPath = path.join(baseDir, entry);
-            try {
-                const stat = fs.statSync(fullPath);
-                if (!stat.isDirectory()) return;
-            } catch (e) {
-                return;
-            }
+            const fullPath = path.join(adobeDir, entry);
+            try { if (!fs.statSync(fullPath).isDirectory()) return; } catch (e) { return; }
 
             const year = match[1];
-            const majorVersion = parseInt(year, 10) - 2000 + 2; // 2022→22, 2024→24, etc.
+            const yearNum = parseInt(year, 10);
+            const majorVersion = yearNum <= 2021 ? yearNum - 2003 : yearNum - 2000;
+
+            const supportFiles = path.join(fullPath, 'Support Files');
+            if (!fs.existsSync(supportFiles)) return;
+
+            const docsDir = findDocsDir(year);
 
             versions.push({
                 year: year,
-                folderName: entry,
+                installDir: fullPath,
+                supportFilesDir: supportFiles,
+                docsDir: docsDir,
                 majorVersion: majorVersion,
-                label: entry + ' (v' + majorVersion + '.x)'
+                label: 'After Effects ' + year + ' (v' + majorVersion + '.x)'
             });
         });
 
-        // Sort by year ascending
-        versions.sort(function (a, b) { return parseInt(a.year) - parseInt(b.year); });
+        versions.sort(function (a, b) { return a.majorVersion - b.majorVersion; });
         return versions;
+    }
+
+    function findDocsDir(year) {
+        const adobeDocs = path.join(getDocumentsDir(), 'Adobe');
+        if (!fs.existsSync(adobeDocs)) return null;
+
+        const candidates = ['After Effects CC ' + year, 'After Effects ' + year];
+        for (let i = 0; i < candidates.length; i++) {
+            const p = path.join(adobeDocs, candidates[i]);
+            if (fs.existsSync(p) && fs.statSync(p).isDirectory()) return p;
+        }
+
+        const shared = path.join(adobeDocs, 'After Effects');
+        if (fs.existsSync(shared) && fs.statSync(shared).isDirectory()) return shared;
+        return null;
     }
 
     // ── File Scanning ──────────────────────────────────────
 
-    /**
-     * Recursively scan a directory and return file info.
-     * Returns { files: [{relativePath, fullPath, size}], subfolderCount }
-     */
     function scanDirectory(dirPath) {
         const result = { files: [], subfolderCount: 0 };
-
-        if (!fs.existsSync(dirPath)) {
-            return result;
-        }
+        if (!dirPath || !fs.existsSync(dirPath)) return result;
 
         function walk(currentDir, relativeBase) {
             let entries;
-            try {
-                entries = fs.readdirSync(currentDir);
-            } catch (e) {
-                return;
-            }
+            try { entries = fs.readdirSync(currentDir); } catch (e) { return; }
 
             entries.forEach(function (entry) {
                 const fullPath = path.join(currentDir, entry);
                 const relativePath = relativeBase ? path.join(relativeBase, entry) : entry;
-
                 try {
                     const stat = fs.statSync(fullPath);
                     if (stat.isDirectory()) {
-                        if (relativeBase === '') {
-                            result.subfolderCount++;
-                        }
+                        if (relativeBase === '') result.subfolderCount++;
                         walk(fullPath, relativePath);
                     } else if (stat.isFile()) {
-                        result.files.push({
-                            relativePath: relativePath,
-                            fullPath: fullPath,
-                            size: stat.size
-                        });
+                        result.files.push({ relativePath, fullPath, size: stat.size });
                     }
-                } catch (e) {
-                    // Skip inaccessible files
-                }
+                } catch (e) { /* skip */ }
             });
         }
 
@@ -154,297 +172,434 @@
     }
 
     /**
-     * Scan source version and return categorized results.
+     * Scan third-party plugins (folders not in DEFAULT_PLUGIN_FOLDERS).
      */
-    function scanSource(version) {
-        const paths = getVersionPaths(version);
-        const result = {
-            presets: { files: [], subfolderCount: 0, dirExists: false },
-            outputModules: { files: [], subfolderCount: 0, dirExists: false },
-            renderSettings: { files: [], subfolderCount: 0, dirExists: false },
-            totalFiles: 0
-        };
+    function scanPlugins(pluginsDir) {
+        const result = { files: [], subfolderCount: 0, folders: [] };
+        if (!pluginsDir || !fs.existsSync(pluginsDir)) return result;
 
-        // Scan User Presets (*.ffx files in subdirectories)
-        if (fs.existsSync(paths.presetsDir)) {
-            result.presets.dirExists = true;
-            const scan = scanDirectory(paths.presetsDir);
-            result.presets.files = scan.files;
-            result.presets.subfolderCount = scan.subfolderCount;
-        }
+        let entries;
+        try { entries = fs.readdirSync(pluginsDir); } catch (e) { return result; }
 
-        // Scan Templates directory
-        if (fs.existsSync(paths.templatesDir)) {
-            // Output Module templates and Render Settings are both in Templates/
-            const scan = scanDirectory(paths.templatesDir);
-            scan.files.forEach(function (file) {
-                // Categorize by common naming patterns
-                const lower = file.relativePath.toLowerCase();
-                if (lower.indexOf('output') !== -1 || lower.indexOf('om ') !== -1 || lower.endsWith('.aom')) {
-                    result.outputModules.files.push(file);
-                    result.outputModules.dirExists = true;
-                } else if (lower.indexOf('render') !== -1 || lower.indexOf('rs ') !== -1 || lower.endsWith('.ars')) {
-                    result.renderSettings.files.push(file);
-                    result.renderSettings.dirExists = true;
-                } else {
-                    // Default: treat as output module template
-                    result.outputModules.files.push(file);
-                    result.outputModules.dirExists = true;
-                }
+        entries.forEach(function (entry) {
+            if (DEFAULT_PLUGIN_FOLDERS.has(entry.toLowerCase())) return;
+            const fullPath = path.join(pluginsDir, entry);
+            try { if (!fs.statSync(fullPath).isDirectory()) return; } catch (e) { return; }
+
+            result.folders.push(entry);
+            result.subfolderCount++;
+            const scan = scanDirectory(fullPath);
+            scan.files.forEach(function (f) {
+                result.files.push({
+                    relativePath: path.join(entry, f.relativePath),
+                    fullPath: f.fullPath,
+                    size: f.size
+                });
             });
-            if (!result.outputModules.dirExists && !result.renderSettings.dirExists && scan.files.length > 0) {
-                // If no categorization matched, put all in output modules
-                result.outputModules.files = scan.files;
-                result.outputModules.dirExists = true;
-            }
-        }
-
-        result.totalFiles = result.presets.files.length +
-            result.outputModules.files.length +
-            result.renderSettings.files.length;
+        });
 
         return result;
     }
 
-    // ── Backup ─────────────────────────────────────────────
+    /**
+     * Scan user-installed ScriptUI Panels (exclude defaults).
+     */
+    function scanScripts(scriptsDir) {
+        const result = { files: [], subfolderCount: 0 };
+        if (!scriptsDir || !fs.existsSync(scriptsDir)) return result;
+
+        let entries;
+        try { entries = fs.readdirSync(scriptsDir); } catch (e) { return result; }
+
+        entries.forEach(function (entry) {
+            if (DEFAULT_SCRIPTS.has(entry.toLowerCase())) return;
+            const fullPath = path.join(scriptsDir, entry);
+            try {
+                const stat = fs.statSync(fullPath);
+                if (stat.isDirectory()) {
+                    result.subfolderCount++;
+                    const scan = scanDirectory(fullPath);
+                    scan.files.forEach(function (f) {
+                        result.files.push({
+                            relativePath: path.join(entry, f.relativePath),
+                            fullPath: f.fullPath, size: f.size
+                        });
+                    });
+                } else if (stat.isFile()) {
+                    result.files.push({ relativePath: entry, fullPath, size: stat.size });
+                }
+            } catch (e) { /* skip */ }
+        });
+
+        return result;
+    }
 
     /**
-     * Create a backup of the target directory.
-     * Returns { success, backupPath, error }
+     * Scan non-default presets from Support Files/Presets.
      */
-    function createBackup(dirPath, label) {
-        if (!fs.existsSync(dirPath)) {
-            return { success: true, backupPath: null, skipped: true };
+    function scanPresets(presetsDir) {
+        const result = { files: [], subfolderCount: 0, folders: [] };
+        if (!presetsDir || !fs.existsSync(presetsDir)) return result;
+
+        let entries;
+        try { entries = fs.readdirSync(presetsDir); } catch (e) { return result; }
+
+        entries.forEach(function (entry) {
+            const fullPath = path.join(presetsDir, entry);
+            try {
+                const stat = fs.statSync(fullPath);
+                if (stat.isDirectory()) {
+                    if (DEFAULT_PRESET_FOLDERS.has(entry.toLowerCase())) return;
+                    result.folders.push(entry);
+                    result.subfolderCount++;
+                    const scan = scanDirectory(fullPath);
+                    scan.files.forEach(function (f) {
+                        result.files.push({
+                            relativePath: path.join(entry, f.relativePath),
+                            fullPath: f.fullPath, size: f.size
+                        });
+                    });
+                } else if (stat.isFile()) {
+                    result.files.push({ relativePath: entry, fullPath, size: stat.size });
+                }
+            } catch (e) { /* skip */ }
+        });
+
+        return result;
+    }
+
+    /**
+     * Compute difference: items in source but missing in target.
+     */
+    function computeMissing(sourceItems, targetDir) {
+        if (!targetDir || !fs.existsSync(targetDir)) {
+            // Target doesn't exist at all — everything is missing
+            return { missing: sourceItems.files.slice(), existing: [] };
         }
 
+        const missing = [];
+        const existing = [];
+
+        sourceItems.files.forEach(function (file) {
+            const targetPath = path.join(targetDir, file.relativePath);
+            if (fs.existsSync(targetPath)) {
+                existing.push(file);
+            } else {
+                missing.push(file);
+            }
+        });
+
+        return { missing, existing };
+    }
+
+    /**
+     * Full scan of source version.
+     */
+    function scanSource(version) {
+        const paths = getVersionPaths(version);
+        return {
+            plugins: scanPlugins(paths.pluginsDir),
+            scripts: scanScripts(paths.scriptsDir),
+            presets: scanPresets(paths.presetsDir),
+            userPresets: scanDirectory(paths.userPresetsDir),
+            templates: scanDirectory(paths.templatesDir),
+            get totalFiles() {
+                return this.plugins.files.length + this.scripts.files.length +
+                    this.presets.files.length + this.userPresets.files.length +
+                    this.templates.files.length;
+            }
+        };
+    }
+
+    // ── Backup & Copy (Documents items only) ───────────────
+
+    function createBackup(dirPath) {
+        if (!dirPath || !fs.existsSync(dirPath)) {
+            return { success: true, backupPath: null, skipped: true };
+        }
         const now = new Date();
-        const timestamp = now.getFullYear().toString() +
+        const ts = now.getFullYear().toString() +
             pad2(now.getMonth() + 1) + pad2(now.getDate()) + '_' +
             pad2(now.getHours()) + pad2(now.getMinutes()) + pad2(now.getSeconds());
-        const backupPath = dirPath + '_backup_' + timestamp;
-
+        const backupPath = dirPath + '_backup_' + ts;
         try {
             copyDirectoryRecursive(dirPath, backupPath);
-            return { success: true, backupPath: backupPath };
+            return { success: true, backupPath };
         } catch (e) {
             return { success: false, error: e.message };
         }
     }
 
-    function pad2(n) {
-        return n < 10 ? '0' + n : '' + n;
-    }
+    function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 
-    /**
-     * Recursively copy a directory.
-     */
     function copyDirectoryRecursive(src, dest) {
-        if (!fs.existsSync(dest)) {
-            fs.mkdirSync(dest, { recursive: true });
-        }
-
-        const entries = fs.readdirSync(src);
-        entries.forEach(function (entry) {
-            const srcPath = path.join(src, entry);
-            const destPath = path.join(dest, entry);
-            const stat = fs.statSync(srcPath);
-
-            if (stat.isDirectory()) {
-                copyDirectoryRecursive(srcPath, destPath);
-            } else {
-                fs.copyFileSync(srcPath, destPath);
-            }
+        if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+        fs.readdirSync(src).forEach(function (entry) {
+            const s = path.join(src, entry), d = path.join(dest, entry);
+            if (fs.statSync(s).isDirectory()) copyDirectoryRecursive(s, d);
+            else fs.copyFileSync(s, d);
         });
     }
 
-    // ── Migration ──────────────────────────────────────────
-
-    /**
-     * Copy files from source to target, preserving subfolder structure.
-     * Skips files that already exist in target (no overwrite).
-     *
-     * @param {Array} files - Array of {relativePath, fullPath}
-     * @param {string} targetBaseDir - Target directory root
-     * @returns {{ copied: number, skipped: string[], errors: string[] }}
-     */
     function copyFiles(files, targetBaseDir) {
         const result = { copied: 0, skipped: [], errors: [] };
-
         files.forEach(function (file) {
             const destPath = path.join(targetBaseDir, file.relativePath);
             const destDir = path.dirname(destPath);
-
             try {
-                // Create subdirectory if needed
-                if (!fs.existsSync(destDir)) {
-                    fs.mkdirSync(destDir, { recursive: true });
-                }
-
-                // SAFETY: Never overwrite existing files
-                if (fs.existsSync(destPath)) {
-                    result.skipped.push(file.relativePath);
-                    return;
-                }
-
-                // Copy file (read from source only, never write to source)
+                if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+                if (fs.existsSync(destPath)) { result.skipped.push(file.relativePath); return; }
                 fs.copyFileSync(file.fullPath, destPath);
                 result.copied++;
             } catch (e) {
                 result.errors.push(file.relativePath + ' \u2014 ' + e.message);
             }
         });
-
         return result;
     }
 
-    /**
-     * Execute full migration.
-     */
+    // ── Migration ──────────────────────────────────────────
+
     async function executeMigration() {
-        if (isMigrating) return;
-        if (!sourceVersion || !targetVersion) return;
-        if (!scanResult) return;
+        if (isMigrating || !sourceVersion || !targetVersion || !scanResult) return;
 
-        const migratePresets = document.getElementById('chk-presets').checked;
-        const migrateOM = document.getElementById('chk-outputmodules').checked;
-        const migrateRS = document.getElementById('chk-rendersettings').checked;
+        const doPlugins = getChk('plugins');
+        const doScripts = getChk('scripts');
+        const doPresets = getChk('presets');
+        const doUserPresets = getChk('userPresets');
+        const doTemplates = getChk('templates');
 
-        if (!migratePresets && !migrateOM && !migrateRS) {
+        if (!doPlugins && !doScripts && !doPresets && !doUserPresets && !doTemplates) {
             log('No categories selected.', 'warning');
             return;
         }
 
-        // Confirmation dialog
-        const totalSelected =
-            (migratePresets ? scanResult.presets.files.length : 0) +
-            (migrateOM ? scanResult.outputModules.files.length : 0) +
-            (migrateRS ? scanResult.renderSettings.files.length : 0);
+        const sourcePaths = getVersionPaths(sourceVersion);
+        const targetPaths = getVersionPaths(targetVersion);
 
-        if (!confirm('Migrate ' + totalSelected + ' files from ' + sourceVersion.label + ' to ' + targetVersion.label + '?\n\nA backup of the target folders will be created before migration.')) {
+        // Count what will be done
+        const programFilesCategories = [];
+        const docsCopyCategories = [];
+        if (doPlugins && scanResult.plugins.files.length > 0) programFilesCategories.push('Plug-ins');
+        if (doScripts && scanResult.scripts.files.length > 0) programFilesCategories.push('ScriptUI Panels');
+        if (doPresets && scanResult.presets.files.length > 0) programFilesCategories.push('Presets');
+        if (doUserPresets && scanResult.userPresets.files.length > 0) docsCopyCategories.push('User Presets');
+        if (doTemplates && scanResult.templates.files.length > 0) docsCopyCategories.push('Templates');
+
+        if (programFilesCategories.length === 0 && docsCopyCategories.length === 0) {
+            log('Nothing to migrate (0 files in selected categories).', 'info');
             return;
         }
+
+        // Build confirmation message
+        let msg = sourceVersion.label + ' \u2192 ' + targetVersion.label + '\n\n';
+        if (programFilesCategories.length > 0) {
+            msg += '\u{1F50D} REPORT: ' + programFilesCategories.join(', ') +
+                '\n   Missing items will be listed. Both folders will be opened for manual copy.\n\n';
+        }
+        if (docsCopyCategories.length > 0) {
+            msg += '\u{1F4E6} AUTO-COPY: ' + docsCopyCategories.join(', ') +
+                '\n   Files will be copied automatically (backup first, no overwrites).\n';
+        }
+        msg += '\nProceed?';
+        if (!confirm(msg)) return;
 
         isMigrating = true;
         updateMigrateButton();
         clearLog();
 
-        const targetPaths = getVersionPaths(targetVersion);
-        let totalCopied = 0;
-        let totalSkipped = 0;
-        let totalErrors = 0;
+        log(sourceVersion.label + ' \u2192 ' + targetVersion.label, 'info');
 
-        // ── Step 1: Backup target folders ──
-        log('Starting migration...', 'info');
-        log('\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500', 'info');
+        // ══════════════════════════════════════════════════
+        // PART 1: Program Files — Report & Open Folders
+        // ══════════════════════════════════════════════════
+        if (programFilesCategories.length > 0) {
+            log('', 'info');
+            log('\u2550'.repeat(44), 'info');
+            log('MISSING ITEMS REPORT (manual copy needed)', 'info');
+            log('\u2550'.repeat(44), 'info');
 
-        if (migratePresets && scanResult.presets.files.length > 0) {
-            const backup = createBackup(targetPaths.presetsDir, 'User Presets');
-            if (!backup.success) {
-                log('\u2717 Backup failed for User Presets: ' + backup.error, 'error');
-                isMigrating = false;
-                updateMigrateButton();
-                return;
+            if (doPlugins && scanResult.plugins.files.length > 0) {
+                const diff = computeMissing(scanResult.plugins, targetPaths.pluginsDir);
+                log('', 'info');
+                log('\u25A0 Plug-ins (3rd party)', 'info');
+                if (diff.missing.length > 0) {
+                    // Group by top-level folder
+                    const folders = new Set();
+                    diff.missing.forEach(function (f) {
+                        folders.add(f.relativePath.split(/[\\/]/)[0]);
+                    });
+                    folders.forEach(function (folder) {
+                        log('  \u2717 ' + folder + ' — missing in target', 'error');
+                    });
+                    log('  \u2192 ' + diff.missing.length + ' files in ' + folders.size + ' folder(s) need copying', 'warning');
+                } else {
+                    log('  \u2713 All plug-in folders already exist in target', 'success');
+                }
+                if (diff.existing.length > 0) {
+                    log('  \u2713 ' + diff.existing.length + ' files already present', 'success');
+                }
             }
-            if (backup.backupPath) {
-                log('\u2713 Backup created: ' + shortenPath(backup.backupPath), 'success');
-            } else if (backup.skipped) {
-                log('\u2713 Target User Presets folder does not exist yet (no backup needed)', 'info');
+
+            if (doScripts && scanResult.scripts.files.length > 0) {
+                const diff = computeMissing(scanResult.scripts, targetPaths.scriptsDir);
+                log('', 'info');
+                log('\u25A0 ScriptUI Panels', 'info');
+                if (diff.missing.length > 0) {
+                    diff.missing.forEach(function (f) {
+                        // Show top-level file/folder name only
+                        const topName = f.relativePath.split(/[\\/]/)[0];
+                        log('  \u2717 ' + topName, 'error');
+                    });
+                    // Deduplicate log for folder-based scripts
+                    log('  \u2192 ' + diff.missing.length + ' file(s) need copying', 'warning');
+                } else {
+                    log('  \u2713 All scripts already exist in target', 'success');
+                }
             }
-        }
 
-        if ((migrateOM || migrateRS) &&
-            (scanResult.outputModules.files.length > 0 || scanResult.renderSettings.files.length > 0)) {
-            const backup = createBackup(targetPaths.templatesDir, 'Templates');
-            if (!backup.success) {
-                log('\u2717 Backup failed for Templates: ' + backup.error, 'error');
-                isMigrating = false;
-                updateMigrateButton();
-                return;
+            if (doPresets && scanResult.presets.files.length > 0) {
+                const diff = computeMissing(scanResult.presets, targetPaths.presetsDir);
+                log('', 'info');
+                log('\u25A0 Presets (non-default)', 'info');
+                if (diff.missing.length > 0) {
+                    const folders = new Set();
+                    diff.missing.forEach(function (f) {
+                        const top = f.relativePath.split(/[\\/]/)[0];
+                        if (top.indexOf('.') === -1) folders.add(top);
+                        else log('  \u2717 ' + top, 'error');
+                    });
+                    folders.forEach(function (folder) {
+                        log('  \u2717 ' + folder + '/', 'error');
+                    });
+                    log('  \u2192 ' + diff.missing.length + ' file(s) need copying', 'warning');
+                } else {
+                    log('  \u2713 All presets already exist in target', 'success');
+                }
             }
-            if (backup.backupPath) {
-                log('\u2713 Backup created: ' + shortenPath(backup.backupPath), 'success');
-            } else if (backup.skipped) {
-                log('\u2713 Target Templates folder does not exist yet (no backup needed)', 'info');
+
+            log('', 'info');
+            log('\u2500'.repeat(44), 'info');
+            log('\u26A0 Plug-ins (.aex) may not be compatible across AE versions.', 'warning');
+            log('  Check vendor sites for version compatibility before copying.', 'warning');
+            log('\u2500'.repeat(44), 'info');
+        }
+
+        // ══════════════════════════════════════════════════
+        // PART 2: Documents — Auto-copy with backup
+        // ══════════════════════════════════════════════════
+        if (docsCopyCategories.length > 0) {
+            log('', 'info');
+            log('\u2550'.repeat(44), 'info');
+            log('AUTO-COPY (Documents)', 'info');
+            log('\u2550'.repeat(44), 'info');
+
+            let totalCopied = 0, totalSkipped = 0, totalErrors = 0;
+
+            // Backup
+            if (doUserPresets && scanResult.userPresets.files.length > 0) {
+                const backup = createBackup(targetPaths.userPresetsDir);
+                if (!backup.success) {
+                    log('\u2717 Backup failed: ' + backup.error, 'error');
+                    isMigrating = false; updateMigrateButton(); return;
+                }
+                if (backup.backupPath) log('\u2713 Backup: User Presets \u2192 ' + shortenPath(backup.backupPath), 'success');
             }
+            if (doTemplates && scanResult.templates.files.length > 0) {
+                const backup = createBackup(targetPaths.templatesDir);
+                if (!backup.success) {
+                    log('\u2717 Backup failed: ' + backup.error, 'error');
+                    isMigrating = false; updateMigrateButton(); return;
+                }
+                if (backup.backupPath) log('\u2713 Backup: Templates \u2192 ' + shortenPath(backup.backupPath), 'success');
+            }
+
+            await new Promise(function (r) { setTimeout(r, 50); });
+
+            // Copy
+            if (doUserPresets && scanResult.userPresets.files.length > 0) {
+                const r = copyFiles(scanResult.userPresets.files, targetPaths.userPresetsDir);
+                totalCopied += r.copied; totalSkipped += r.skipped.length; totalErrors += r.errors.length;
+                log('\u2713 User Presets: ' + r.copied + '/' + scanResult.userPresets.files.length + ' copied',
+                    r.errors.length > 0 ? 'warning' : 'success');
+                r.skipped.forEach(function (f) { log('  \u26A0 Skipped: ' + path.basename(f) + ' (exists)', 'warning'); });
+                r.errors.forEach(function (e) { log('  \u2717 ' + e, 'error'); });
+            }
+
+            if (doTemplates && scanResult.templates.files.length > 0) {
+                const r = copyFiles(scanResult.templates.files, targetPaths.templatesDir);
+                totalCopied += r.copied; totalSkipped += r.skipped.length; totalErrors += r.errors.length;
+                log('\u2713 Templates: ' + r.copied + '/' + scanResult.templates.files.length + ' copied',
+                    r.errors.length > 0 ? 'warning' : 'success');
+                r.skipped.forEach(function (f) { log('  \u26A0 Skipped: ' + path.basename(f) + ' (exists)', 'warning'); });
+                r.errors.forEach(function (e) { log('  \u2717 ' + e, 'error'); });
+            }
+
+            log('', 'info');
+            log('Auto-copy done: ' + totalCopied + ' copied, ' + totalSkipped + ' skipped, ' + totalErrors + ' errors.',
+                totalErrors > 0 ? 'warning' : 'success');
         }
 
-        log('\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500', 'info');
-
-        // ── Step 2: Copy files ──
-        // Use setTimeout to avoid blocking UI
-        await new Promise(function (resolve) { setTimeout(resolve, 50); });
-
-        if (migratePresets && scanResult.presets.files.length > 0) {
-            const result = copyFiles(scanResult.presets.files, targetPaths.presetsDir);
-            totalCopied += result.copied;
-            totalSkipped += result.skipped.length;
-            totalErrors += result.errors.length;
-
-            log('\u2713 Animation Presets: ' + result.copied + '/' + scanResult.presets.files.length + ' copied', 'success');
-            result.skipped.forEach(function (f) {
-                log('  \u26A0 Skipped: ' + path.basename(f) + ' (already exists)', 'warning');
-            });
-            result.errors.forEach(function (e) {
-                log('  \u2717 Error: ' + e, 'error');
-            });
-        }
-
-        if (migrateOM && scanResult.outputModules.files.length > 0) {
-            const result = copyFiles(scanResult.outputModules.files, targetPaths.templatesDir);
-            totalCopied += result.copied;
-            totalSkipped += result.skipped.length;
-            totalErrors += result.errors.length;
-
-            log('\u2713 Output Module Templates: ' + result.copied + '/' + scanResult.outputModules.files.length + ' copied', 'success');
-            result.skipped.forEach(function (f) {
-                log('  \u26A0 Skipped: ' + path.basename(f) + ' (already exists)', 'warning');
-            });
-            result.errors.forEach(function (e) {
-                log('  \u2717 Error: ' + e, 'error');
-            });
-        }
-
-        if (migrateRS && scanResult.renderSettings.files.length > 0) {
-            const result = copyFiles(scanResult.renderSettings.files, targetPaths.templatesDir);
-            totalCopied += result.copied;
-            totalSkipped += result.skipped.length;
-            totalErrors += result.errors.length;
-
-            log('\u2713 Render Settings: ' + result.copied + '/' + scanResult.renderSettings.files.length + ' copied', 'success');
-            result.skipped.forEach(function (f) {
-                log('  \u26A0 Skipped: ' + path.basename(f) + ' (already exists)', 'warning');
-            });
-            result.errors.forEach(function (e) {
-                log('  \u2717 Error: ' + e, 'error');
-            });
-        }
-
-        log('\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500', 'info');
-        log('Migration complete! ' + totalCopied + ' files copied, ' +
-            totalSkipped + ' skipped, ' + totalErrors + ' errors.', totalErrors > 0 ? 'warning' : 'success');
+        log('', 'info');
+        log('\u2550'.repeat(44), 'info');
+        log('Done!', 'success');
 
         isMigrating = false;
         updateMigrateButton();
     }
 
+    function getChk(id) {
+        const el = document.getElementById('chk-' + id);
+        return el && el.checked && scanResult[id].files.length > 0;
+    }
+
+    // ── Open Folders ───────────────────────────────────────
+
+    function openBothFolders(category) {
+        if (!sourceVersion || !targetVersion) return;
+        const sp = getVersionPaths(sourceVersion);
+        const tp = getVersionPaths(targetVersion);
+
+        const dirMap = {
+            plugins: ['pluginsDir', 'pluginsDir'],
+            scripts: ['scriptsDir', 'scriptsDir'],
+            presets: ['presetsDir', 'presetsDir']
+        };
+
+        const keys = dirMap[category];
+        if (!keys) return;
+
+        const sourceDir = sp[keys[0]];
+        const targetDir = tp[keys[1]];
+
+        if (sourceDir) openFolder(sourceDir);
+        // Small delay so two Explorer windows don't overlap
+        setTimeout(function () {
+            if (targetDir) {
+                // Create target dir if it doesn't exist (e.g., ScriptUI Panels)
+                if (!fs.existsSync(targetDir)) {
+                    try { fs.mkdirSync(targetDir, { recursive: true }); } catch (e) { /* */ }
+                }
+                openFolder(targetDir);
+            }
+        }, 300);
+    }
+
+    // Expose to HTML onclick
+    window.openBothFolders = openBothFolders;
+
     // ── UI Helpers ─────────────────────────────────────────
 
     function shortenPath(p) {
-        // Show last 3 segments
         const parts = p.replace(/\\/g, '/').split('/');
-        if (parts.length > 3) {
-            return '.../' + parts.slice(-3).join('/');
-        }
-        return p;
+        return parts.length > 4 ? '.../' + parts.slice(-4).join('/') : p;
     }
 
     function populateDropdowns() {
         detectedVersions = detectVersions();
-
         const sourceSelect = document.getElementById('source-select');
         const targetSelect = document.getElementById('target-select');
 
-        // Clear existing options
         sourceSelect.innerHTML = '<option value="">-- Select Source --</option>';
         targetSelect.innerHTML = '<option value="">-- Select Target --</option>';
 
@@ -455,24 +610,22 @@
         }
 
         detectedVersions.forEach(function (v, i) {
-            const opt1 = document.createElement('option');
-            opt1.value = i;
-            opt1.textContent = v.label;
-            sourceSelect.appendChild(opt1);
-
-            const opt2 = document.createElement('option');
-            opt2.value = i;
-            opt2.textContent = v.label;
-            targetSelect.appendChild(opt2);
+            sourceSelect.appendChild(makeOpt(i, v.label));
+            targetSelect.appendChild(makeOpt(i, v.label));
         });
 
-        // Auto-select: source = second-to-last, target = last
         if (detectedVersions.length >= 2) {
             sourceSelect.value = detectedVersions.length - 2;
             targetSelect.value = detectedVersions.length - 1;
             onSourceChange();
             onTargetChange();
         }
+    }
+
+    function makeOpt(value, text) {
+        const o = document.createElement('option');
+        o.value = value; o.textContent = text;
+        return o;
     }
 
     function onSourceChange() {
@@ -499,14 +652,16 @@
             warning.style.display = 'none';
             btn.disabled = !(sourceVersion && targetVersion && scanResult && scanResult.totalFiles > 0);
         }
+
+        // Show/hide open-folders buttons based on target selection
+        document.querySelectorAll('.btn-open-folders').forEach(function (btn) {
+            btn.style.display = (sourceVersion && targetVersion &&
+                sourceVersion.year !== targetVersion.year) ? 'inline-block' : 'none';
+        });
     }
 
     function updateScanResults() {
         const container = document.getElementById('scan-results');
-        const presetsRow = document.getElementById('row-presets');
-        const omRow = document.getElementById('row-outputmodules');
-        const rsRow = document.getElementById('row-rendersettings');
-        const totalEl = document.getElementById('total-files');
 
         if (!sourceVersion) {
             container.style.display = 'none';
@@ -518,42 +673,47 @@
         scanResult = scanSource(sourceVersion);
         container.style.display = 'block';
 
-        // Animation Presets
-        const presetCount = scanResult.presets.files.length;
-        document.getElementById('chk-presets').checked = presetCount > 0;
-        document.getElementById('chk-presets').disabled = presetCount === 0;
-        document.getElementById('presets-count').textContent = presetCount + ' files';
-        document.getElementById('presets-subfolders').textContent =
-            scanResult.presets.subfolderCount > 0
-                ? '(' + scanResult.presets.subfolderCount + ' subfolders)'
-                : '';
-        presetsRow.style.opacity = presetCount > 0 ? '1' : '0.4';
+        // Program Files categories
+        updateCategoryRow('plugins', scanResult.plugins);
+        updateCategoryRow('scripts', scanResult.scripts);
+        updateCategoryRow('presets', scanResult.presets);
 
-        // Output Module Templates
-        const omCount = scanResult.outputModules.files.length;
-        document.getElementById('chk-outputmodules').checked = omCount > 0;
-        document.getElementById('chk-outputmodules').disabled = omCount === 0;
-        document.getElementById('om-count').textContent = omCount + ' files';
-        omRow.style.opacity = omCount > 0 ? '1' : '0.4';
+        // Documents categories
+        updateCategoryRow('userPresets', scanResult.userPresets);
+        updateCategoryRow('templates', scanResult.templates);
 
-        // Render Settings
-        const rsCount = scanResult.renderSettings.files.length;
-        document.getElementById('chk-rendersettings').checked = rsCount > 0;
-        document.getElementById('chk-rendersettings').disabled = rsCount === 0;
-        document.getElementById('rs-count').textContent = rsCount + ' files';
-        rsRow.style.opacity = rsCount > 0 ? '1' : '0.4';
-
-        // Total
-        totalEl.textContent = 'Total: ' + scanResult.totalFiles + ' files';
-
+        document.getElementById('total-files').textContent = 'Total: ' + scanResult.totalFiles + ' files';
         validateSelection();
+    }
+
+    function updateCategoryRow(id, data) {
+        const row = document.getElementById('row-' + id);
+        const chk = document.getElementById('chk-' + id);
+        const countEl = document.getElementById('count-' + id);
+        const detailEl = document.getElementById('detail-' + id);
+
+        const count = data.files.length;
+        chk.checked = count > 0;
+        chk.disabled = count === 0;
+        countEl.textContent = count + ' files';
+        row.style.opacity = count > 0 ? '1' : '0.4';
+
+        if (detailEl) {
+            if (data.folders && data.folders.length > 0) {
+                detailEl.textContent = data.folders.join(', ');
+            } else if (data.subfolderCount > 0) {
+                detailEl.textContent = '(' + data.subfolderCount + ' subfolders)';
+            } else {
+                detailEl.textContent = '';
+            }
+        }
     }
 
     function updateMigrateButton() {
         const btn = document.getElementById('btn-migrate');
         if (isMigrating) {
             btn.disabled = true;
-            btn.textContent = 'Migrating...';
+            btn.textContent = 'Working...';
         } else {
             btn.textContent = '\u25B6 Migrate';
             validateSelection();
@@ -564,6 +724,8 @@
 
     function log(message, type) {
         const logEl = document.getElementById('log-content');
+        const ph = logEl.querySelector('.log-placeholder');
+        if (ph) ph.remove();
         const line = document.createElement('div');
         line.className = 'log-line log-' + (type || 'info');
         line.textContent = message;
@@ -579,30 +741,12 @@
 
     function init() {
         populateDropdowns();
-
-        document.getElementById('source-select').addEventListener('change', function () {
-            onSourceChange();
-            onTargetChange();
-        });
-        document.getElementById('target-select').addEventListener('change', function () {
-            onTargetChange();
-        });
-
-        document.getElementById('btn-migrate').addEventListener('click', function () {
-            executeMigration();
-        });
-
-        document.getElementById('btn-refresh').addEventListener('click', function () {
-            populateDropdowns();
-            clearLog();
-            log('Refreshed version list.', 'info');
-        });
+        document.getElementById('source-select').addEventListener('change', function () { onSourceChange(); onTargetChange(); });
+        document.getElementById('target-select').addEventListener('change', function () { onTargetChange(); });
+        document.getElementById('btn-migrate').addEventListener('click', function () { executeMigration(); });
+        document.getElementById('btn-refresh').addEventListener('click', function () { populateDropdowns(); clearLog(); log('Refreshed.', 'info'); });
     }
 
-    // Wait for DOM
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
 })();
