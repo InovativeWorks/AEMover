@@ -52,11 +52,23 @@
 
     // ── Path Helpers ───────────────────────────────────────
 
-    function getProgramFilesDir() {
+    function getProgramFilesDirs() {
         if (os.platform() === 'win32') {
-            return process.env['ProgramFiles'] || 'C:\\Program Files';
+            // CEP Node.js may not have environment variables — try multiple paths
+            const candidates = [];
+            if (process.env['ProgramFiles']) candidates.push(process.env['ProgramFiles']);
+            candidates.push('C:\\Program Files');
+            candidates.push('D:\\Program Files');
+            // Deduplicate
+            const seen = new Set();
+            return candidates.filter(function (p) {
+                const norm = p.toLowerCase().replace(/\//g, '\\');
+                if (seen.has(norm)) return false;
+                seen.add(norm);
+                return fs.existsSync(p);
+            });
         } else {
-            return '/Applications';
+            return ['/Applications'];
         }
     }
 
@@ -89,39 +101,135 @@
 
     function detectVersions() {
         const versions = [];
-        const adobeDir = path.join(getProgramFilesDir(), 'Adobe');
-        if (!fs.existsSync(adobeDir)) return versions;
+        const seenYears = new Set();
+        const aePattern = /^(?:Adobe )?After Effects(?:\s+CC)?\s+(20\d{2})$/i;
 
-        let entries;
-        try { entries = fs.readdirSync(adobeDir); } catch (e) { return versions; }
+        // ── Source 1: Program Files installations ──
+        const pfDirs = getProgramFilesDirs();
+        pfDirs.forEach(function (pfDir) {
+            const adobeDir = path.join(pfDir, 'Adobe');
+            if (!fs.existsSync(adobeDir)) return;
 
-        const aePattern = /^Adobe After Effects(?:\s+CC)?\s+(20\d{2})$/i;
+            let entries;
+            try { entries = fs.readdirSync(adobeDir); } catch (e) { return; }
 
-        entries.forEach(function (entry) {
-            const match = entry.match(aePattern);
-            if (!match) return;
+            entries.forEach(function (entry) {
+                const match = entry.match(aePattern);
+                if (!match) return;
 
-            const fullPath = path.join(adobeDir, entry);
-            try { if (!fs.statSync(fullPath).isDirectory()) return; } catch (e) { return; }
+                const fullPath = path.join(adobeDir, entry);
+                try { if (!fs.statSync(fullPath).isDirectory()) return; } catch (e) { return; }
 
-            const year = match[1];
-            const yearNum = parseInt(year, 10);
-            const majorVersion = yearNum <= 2021 ? yearNum - 2003 : yearNum - 2000;
+                const year = match[1];
+                if (seenYears.has(year)) return;
 
-            const supportFiles = path.join(fullPath, 'Support Files');
-            if (!fs.existsSync(supportFiles)) return;
+                const supportFiles = path.join(fullPath, 'Support Files');
+                const hasSupportFiles = fs.existsSync(supportFiles);
 
-            const docsDir = findDocsDir(year);
+                seenYears.add(year);
+                const yearNum = parseInt(year, 10);
+                const majorVersion = yearNum <= 2021 ? yearNum - 2003 : yearNum - 2000;
 
-            versions.push({
-                year: year,
-                installDir: fullPath,
-                supportFilesDir: supportFiles,
-                docsDir: docsDir,
-                majorVersion: majorVersion,
-                label: 'After Effects ' + year + ' (v' + majorVersion + '.x)'
+                versions.push({
+                    year: year,
+                    installDir: fullPath,
+                    supportFilesDir: hasSupportFiles ? supportFiles : null,
+                    docsDir: findDocsDir(year),
+                    majorVersion: majorVersion,
+                    label: 'After Effects ' + year + ' (v' + majorVersion + '.x)'
+                });
             });
         });
+
+        // ── Source 2: Documents/Adobe folders (catch versions not in Program Files) ──
+        const adobeDocs = path.join(getDocumentsDir(), 'Adobe');
+        if (fs.existsSync(adobeDocs)) {
+            try {
+                fs.readdirSync(adobeDocs).forEach(function (entry) {
+                    const match = entry.match(aePattern);
+                    if (!match) return;
+
+                    const year = match[1];
+                    if (seenYears.has(year)) return;
+
+                    const fullPath = path.join(adobeDocs, entry);
+                    try { if (!fs.statSync(fullPath).isDirectory()) return; } catch (e) { return; }
+
+                    seenYears.add(year);
+                    const yearNum = parseInt(year, 10);
+                    const majorVersion = yearNum <= 2021 ? yearNum - 2003 : yearNum - 2000;
+
+                    versions.push({
+                        year: year,
+                        installDir: null,
+                        supportFilesDir: null,
+                        docsDir: fullPath,
+                        majorVersion: majorVersion,
+                        label: 'After Effects ' + year + ' (v' + majorVersion + '.x)'
+                    });
+                });
+            } catch (e) { /* skip */ }
+        }
+
+        // ── Source 3: AppData version folders (catch modern shared-folder versions) ──
+        const appDataDir = (function () {
+            if (os.platform() === 'win32') {
+                return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
+                    'Adobe', 'After Effects');
+            }
+            return path.join(os.homedir(), 'Library', 'Preferences', 'Adobe', 'After Effects');
+        })();
+
+        if (fs.existsSync(appDataDir)) {
+            try {
+                const verPattern = /^(\d+)\.\d/;
+                const majorToYear = {
+                    15: '2018', 16: '2019', 17: '2020', 18: '2021',
+                    22: '2022', 23: '2023', 24: '2024', 25: '2025', 26: '2026',
+                    27: '2027', 28: '2028', 29: '2029', 30: '2030'
+                };
+                const appDataMajors = new Set();
+
+                fs.readdirSync(appDataDir).forEach(function (entry) {
+                    const match = entry.match(verPattern);
+                    if (!match) return;
+                    try { if (!fs.statSync(path.join(appDataDir, entry)).isDirectory()) return; } catch (e) { return; }
+                    appDataMajors.add(parseInt(match[1], 10));
+                });
+
+                appDataMajors.forEach(function (major) {
+                    const year = majorToYear[major] || (major + 2000).toString();
+                    if (seenYears.has(year)) return;
+                    seenYears.add(year);
+
+                    // Try to find Program Files install for this version
+                    let installDir = null, supportFilesDir = null;
+                    pfDirs.forEach(function (pfDir) {
+                        if (installDir) return;
+                        const candidates = [
+                            path.join(pfDir, 'Adobe', 'Adobe After Effects ' + year),
+                            path.join(pfDir, 'Adobe', 'Adobe After Effects CC ' + year)
+                        ];
+                        candidates.forEach(function (c) {
+                            if (!installDir && fs.existsSync(c)) {
+                                installDir = c;
+                                const sf = path.join(c, 'Support Files');
+                                if (fs.existsSync(sf)) supportFilesDir = sf;
+                            }
+                        });
+                    });
+
+                    versions.push({
+                        year: year,
+                        installDir: installDir,
+                        supportFilesDir: supportFilesDir,
+                        docsDir: findDocsDir(year),
+                        majorVersion: major,
+                        label: 'After Effects ' + year + ' (v' + major + '.x)'
+                    });
+                });
+            } catch (e) { /* skip */ }
+        }
 
         versions.sort(function (a, b) { return a.majorVersion - b.majorVersion; });
         return versions;
@@ -741,6 +849,19 @@
 
     function init() {
         populateDropdowns();
+
+        // Debug: show detected paths and versions in log
+        const pfDirs = getProgramFilesDirs();
+        log('Scan paths: ' + (pfDirs.length > 0 ? pfDirs.join(', ') : '(none found)'), 'info');
+        log('Documents: ' + getDocumentsDir(), 'info');
+        log('Detected ' + detectedVersions.length + ' version(s):', 'info');
+        detectedVersions.forEach(function (v) {
+            const parts = [];
+            if (v.supportFilesDir) parts.push('PF');
+            if (v.docsDir) parts.push('Docs');
+            log('  ' + v.label + ' [' + parts.join('+') + ']', 'info');
+        });
+
         document.getElementById('source-select').addEventListener('change', function () { onSourceChange(); onTargetChange(); });
         document.getElementById('target-select').addEventListener('change', function () { onTargetChange(); });
         document.getElementById('btn-migrate').addEventListener('click', function () { executeMigration(); });
