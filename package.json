@@ -1,0 +1,12 @@
+{
+  "name": "ae-mover",
+  "version": "1.0.0",
+  "description": "Migrate AE user presets and templates between versions",
+  "main": "CSInterface.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["after-effects", "cep", "migration"],
+  "author": "InovativeWorks",
+  "license": "ISC"
+}
