@@ -1,7 +1,8 @@
 # AE Mover — Claude Code コンテキスト
 
-> 最終更新: 2026-03-16
+> 最終更新: 2026-03-16 (GitHub公開・リリースZIP作成完了)
 > 用途: Claude Codeでの開発作業時に参照する製品固有情報
+> GitHub: https://github.com/InovativeWorks/AEMover
 
 ---
 
@@ -83,7 +84,7 @@ E:\InovativeWorks\products\AEMover\
 
 ## 4. 現在のステータス
 
-### バージョン: v1.1（開発版）
+### バージョン: v1.0.0（リリース準備完了）
 
 ### 完了済み機能
 
@@ -101,35 +102,45 @@ E:\InovativeWorks\products\AEMover\
 | バックアップ付き自動コピー（上書きなし） | `e96dad8` | 2026-03-13 |
 | Open ボタンによる手動フォルダオープン | `e96dad8` | 2026-03-13 |
 | 詳細ログ出力（レポート + コピー結果） | `e96dad8` | 2026-03-13 |
+| README 4言語版（en/ja/ko/zh） | `1070bae` | 2026-03-16 |
+| リリース ZIP 作成（AEMover_v1.0.0.zip） | `1070bae` | 2026-03-16 |
+| GitHub リポジトリ公開 | `1070bae` | 2026-03-16 |
 
 ### Git 履歴
 
 ```
+1070bae Add README (en/ja/ko/zh) and release prep (2026-03-16)
+6d3169e Add product-level CLAUDE.md for AE Mover (2026-03-16)
 0df0cb7 Add i18n support (10 languages), custom modal dialogs, and manual copy guidance (2026-03-16)
 9fb9e9e Fix version detection: triple-source scan + cache busting (2026-03-13)
 e96dad8 Redesign: Program Files detection + report/open-folders approach (2026-03-13)
 02a08f2 Add AE Mover v1.0 CEP extension (2026-03-13)
 ```
 
+### リリース成果物
+
+- **GitHub**: https://github.com/InovativeWorks/AEMover
+- **ZIP**: `release/AEMover_v1.0.0.zip` (44KB) — `.git`, `.debug`, `node_modules`, `CLAUDE.md` 等を除外済み
+
 ---
 
 ## 5. 次のマイルストーン
 
-### v1.1 リリース準備
+### v1.0.0 リリース（aescripts 提出）
 
 - [ ] AE 2024 → AE 2026 の実機移行テスト（全5カテゴリ）
-- [ ] macOS パス処理の検証（`/Applications` + `~/Documents/Adobe`）
-- [ ] i18n: イタリア語・ポルトガル語・韓国語・中国語・ロシア語の未翻訳キーを埋める（現在は英語フォールバック）
-- [ ] `manifest.xml` のバージョンを `1.1.0` に更新
-- [ ] `package.json` のバージョンを `1.1.0` に更新
 - [ ] ZXP ビルド + 署名
 - [ ] aescripts プロダクトページ作成（英語）
 - [ ] プロモ素材（スクリーンショット 5-8枚）
+- [ ] GitHub Releases にリリースタグ + ZIP 添付
+- [ ] aescripts 提出・審査
 
-### 将来の検討事項
+### v1.1 以降
 
-- **AE 2025+ 共有 Documents フォルダ対応**: AE 2025 以降は `Documents/Adobe/After Effects/` が全バージョン共有になる可能性。`findDocsDir()` で既に `After Effects` (年なし) へのフォールバックを実装済み
-- **Aescripts ライセンスフレームワーク統合**: 無料配布のため不要だが、ダウンロード数トラッキングのために検討
+- [ ] macOS 実機テスト（`/Applications` + `~/Documents/Adobe`）
+- [ ] i18n: it/pt/ko/zh/ru の未翻訳キーを全て埋める
+- [ ] AE 2025+ 共有 Documents フォルダ対応の検証
+- [ ] Aescripts ライセンスフレームワーク統合（ダウンロード数トラッキング用）
 
 ---
 
