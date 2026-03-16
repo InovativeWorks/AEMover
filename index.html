@@ -176,6 +176,36 @@
         ::-webkit-scrollbar-track { background: var(--bg-secondary); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* ── Confirm Modal ─────────────────── */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6); z-index: 1000;
+            justify-content: center; align-items: center;
+        }
+        .modal-overlay.visible { display: flex; }
+        .modal-box {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 8px; padding: 16px 18px; width: 90%; max-width: 340px;
+            max-height: 80vh; display: flex; flex-direction: column;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
+        .modal-body {
+            font-size: 11px; line-height: 1.7; color: var(--text-primary);
+            white-space: pre-wrap; word-break: break-word;
+            overflow-y: auto; margin-bottom: 14px;
+        }
+        .modal-buttons {
+            display: flex; justify-content: flex-end; gap: 8px; flex-shrink: 0;
+        }
+        .modal-btn {
+            padding: 6px 20px; border-radius: 4px; font-size: 12px;
+            font-family: inherit; font-weight: 600; cursor: pointer; border: none;
+        }
+        .modal-btn-ok { background: var(--accent); color: #fff; }
+        .modal-btn-ok:hover { background: var(--accent-hover); }
+        .modal-btn-cancel { background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border); }
+        .modal-btn-cancel:hover { background: var(--bg-hover); color: var(--text-primary); }
     </style>
 </head>
 <body>
@@ -189,12 +219,12 @@
         <!-- Version Selection -->
         <div class="section">
             <div class="version-row">
-                <label>Source:</label>
+                <label data-i18n="label.source">Source:</label>
                 <select id="source-select"><option value="">-- Select Source --</option></select>
                 <button id="btn-refresh" class="btn-refresh" title="Refresh">&#x21BB;</button>
             </div>
             <div class="version-row">
-                <label>Target:</label>
+                <label data-i18n="label.target">Target:</label>
                 <select id="target-select"><option value="">-- Select Target --</option></select>
             </div>
             <div id="selection-warning"></div>
@@ -202,48 +232,48 @@
 
         <!-- Scan Results -->
         <div class="section" id="scan-results">
-            <div class="section-label">Items found in source:</div>
+            <div class="section-label" data-i18n="section.itemsFound">Items found in source:</div>
 
             <!-- Program Files (report only) -->
-            <div class="category-group-label">Program Files <span class="item-badge badge-report">report</span></div>
+            <div class="category-group-label"><span data-i18n="group.programFiles">Program Files</span> <span class="item-badge badge-report" data-i18n="badge.report">report</span></div>
 
             <div class="item-row" id="row-plugins">
                 <input type="checkbox" id="chk-plugins" checked>
                 <div class="item-info">
-                    <span class="item-name">Plug-ins (3rd party)</span>
+                    <span class="item-name" data-i18n="cat.plugins">Plug-ins (3rd party)</span>
                     <div class="item-detail" id="detail-plugins"></div>
                 </div>
                 <span class="item-count" id="count-plugins">0 files</span>
-                <button class="btn-open-folders" onclick="openBothFolders('plugins')" title="Open source &amp; target folders">Open</button>
+                <button class="btn-open-folders" onclick="openBothFolders('plugins')" data-i18n="btn.open">Open</button>
             </div>
 
             <div class="item-row" id="row-scripts">
                 <input type="checkbox" id="chk-scripts" checked>
                 <div class="item-info">
-                    <span class="item-name">ScriptUI Panels</span>
+                    <span class="item-name" data-i18n="cat.scripts">ScriptUI Panels</span>
                     <div class="item-detail" id="detail-scripts"></div>
                 </div>
                 <span class="item-count" id="count-scripts">0 files</span>
-                <button class="btn-open-folders" onclick="openBothFolders('scripts')" title="Open source &amp; target folders">Open</button>
+                <button class="btn-open-folders" onclick="openBothFolders('scripts')" data-i18n="btn.open">Open</button>
             </div>
 
             <div class="item-row" id="row-presets">
                 <input type="checkbox" id="chk-presets" checked>
                 <div class="item-info">
-                    <span class="item-name">Presets (non-default)</span>
+                    <span class="item-name" data-i18n="cat.presets">Presets (non-default)</span>
                     <div class="item-detail" id="detail-presets"></div>
                 </div>
                 <span class="item-count" id="count-presets">0 files</span>
-                <button class="btn-open-folders" onclick="openBothFolders('presets')" title="Open source &amp; target folders">Open</button>
+                <button class="btn-open-folders" onclick="openBothFolders('presets')" data-i18n="btn.open">Open</button>
             </div>
 
             <!-- Documents (auto-copy) -->
-            <div class="category-group-label">Documents <span class="item-badge badge-auto">auto-copy</span></div>
+            <div class="category-group-label"><span data-i18n="group.documents">Documents</span> <span class="item-badge badge-auto" data-i18n="badge.autoCopy">auto-copy</span></div>
 
             <div class="item-row" id="row-userPresets">
                 <input type="checkbox" id="chk-userPresets" checked>
                 <div class="item-info">
-                    <span class="item-name">User Presets</span>
+                    <span class="item-name" data-i18n="cat.userPresets">User Presets</span>
                     <div class="item-detail" id="detail-userPresets"></div>
                 </div>
                 <span class="item-count" id="count-userPresets">0 files</span>
@@ -252,7 +282,7 @@
             <div class="item-row" id="row-templates">
                 <input type="checkbox" id="chk-templates" checked>
                 <div class="item-info">
-                    <span class="item-name">Templates</span>
+                    <span class="item-name" data-i18n="cat.templates">Templates</span>
                     <div class="item-detail" id="detail-templates"></div>
                 </div>
                 <span class="item-count" id="count-templates">0 files</span>
@@ -263,14 +293,14 @@
 
         <!-- Migrate Button -->
         <div class="migrate-section">
-            <button id="btn-migrate" class="btn-migrate" disabled>&#x25B6; Migrate</button>
+            <button id="btn-migrate" class="btn-migrate" disabled data-i18n="btn.migrate">&#x25B6; Migrate</button>
         </div>
 
         <!-- Log -->
         <div class="log-section">
-            <div class="section-label">Log:</div>
+            <div class="section-label" data-i18n="label.log">Log:</div>
             <div id="log-content">
-                <div class="log-placeholder">Select source and target versions above.</div>
+                <div class="log-placeholder" data-i18n="log.placeholder">Select source and target versions above.</div>
             </div>
         </div>
 
@@ -278,7 +308,7 @@
         <div class="footer">
             <hr class="footer-divider">
             <div class="footer-text">
-                <span class="footer-heart">&#x2665;</span> Explore more tools by InovativeWorks
+                <span class="footer-heart">&#x2665;</span> <span data-i18n="footer.explore">Explore more tools by InovativeWorks</span>
             </div>
             <div class="footer-products">
                 MotionSpice &middot; RenderSmith &middot; SmartPick
@@ -289,8 +319,20 @@
         </div>
     </div>
 
+    <!-- Confirm Modal -->
+    <div class="modal-overlay" id="confirm-modal">
+        <div class="modal-box">
+            <div class="modal-body" id="confirm-modal-body"></div>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-cancel" id="confirm-modal-cancel">Cancel</button>
+                <button class="modal-btn modal-btn-ok" id="confirm-modal-ok">OK</button>
+            </div>
+        </div>
+    </div>
+
     <script src="CSInterface.js"></script>
     <script src="js/libs/CSInterface.js"></script>
-    <script src="js/main.js?v=2"></script>
+    <script src="js/i18n.js"></script>
+    <script src="js/main.js?v=3"></script>
 </body>
 </html>
