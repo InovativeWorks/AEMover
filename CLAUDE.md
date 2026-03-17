@@ -1,6 +1,6 @@
 # AE Mover — Claude Code コンテキスト
 
-> 最終更新: 2026-03-16 (GitHub公開・リリースZIP作成完了)
+> 最終更新: 2026-03-17 (フッターリンク修正・リリースZIP再作成)
 > 用途: Claude Codeでの開発作業時に参照する製品固有情報
 > GitHub: https://github.com/InovativeWorks/AEMover
 
@@ -84,7 +84,7 @@ E:\InovativeWorks\products\AEMover\
 
 ## 4. 現在のステータス
 
-### バージョン: v1.0.0（リリース準備完了）
+### バージョン: v1.0.0（リリース準備完了・aescripts提出待ち）
 
 ### 完了済み機能
 
@@ -105,10 +105,14 @@ E:\InovativeWorks\products\AEMover\
 | README 4言語版（en/ja/ko/zh） | `1070bae` | 2026-03-16 |
 | リリース ZIP 作成（AEMover_v1.0.0.zip） | `1070bae` | 2026-03-16 |
 | GitHub リポジトリ公開 | `1070bae` | 2026-03-16 |
+| CLAUDE.md ステータス更新 | `2b92911` | 2026-03-16 |
+| フッター author page リンク修正 + ZIP再作成 | `93f5f1e` | 2026-03-17 |
 
 ### Git 履歴
 
 ```
+93f5f1e Fix footer author page link URL (2026-03-17)
+2b92911 Update CLAUDE.md: v1.0.0 release status and milestones (2026-03-16)
 1070bae Add README (en/ja/ko/zh) and release prep (2026-03-16)
 6d3169e Add product-level CLAUDE.md for AE Mover (2026-03-16)
 0df0cb7 Add i18n support (10 languages), custom modal dialogs, and manual copy guidance (2026-03-16)
@@ -128,6 +132,8 @@ e96dad8 Redesign: Program Files detection + report/open-folders approach (2026-0
 
 ### v1.0.0 リリース（aescripts 提出）
 
+- [x] フッター author page リンク修正
+- [x] リリース ZIP 再作成
 - [ ] AE 2024 → AE 2026 の実機移行テスト（全5カテゴリ）
 - [ ] ZXP ビルド + 署名
 - [ ] aescripts プロダクトページ作成（英語）
